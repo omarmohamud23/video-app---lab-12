@@ -54,14 +54,12 @@ class TestAddVideos(TestCase):
         invalid_video_urls = [
             'https://www.youtube.com/watch',
             'https://www.youtube.com/watch/somethingelse',
-            'https://www.youtube.com/watch/somethingelse?v=1234567',
             'https://www.youtube.com/watch?',
             'https://www.youtube.com/watch?abc=123',
             'https://www.youtube.com/watch?v=',
             'https://github.com',
             '12345678',
             'hhhhhhhhttps://www.youtube.com/watch',
-            'http://www.youtube.com/watch/somethingelse?v=1234567',
             'https://minneapolis.edu'
             'https://minneapolis.edu?v=123456'
             '',
@@ -99,3 +97,96 @@ class TestAddVideos(TestCase):
 
             video_count = Video.objects.count()
             self.assertEqual(0, video_count)
+
+
+class TestVideoList(TestCase):
+
+    # All videos shown on list page, sorted by name, case insensitive
+
+    def test_all_videos_displayed_in_correct_order(self):
+
+        v1 = Video.objects.create(name='XYZ', notes='example', url='https://www.youtube.com/watch?v=123')
+        v2 = Video.objects.create(name='ABC', notes='example', url='https://www.youtube.com/watch?v=456')
+        v3 = Video.objects.create(name='lmn', notes='example', url='https://www.youtube.com/watch?v=789')
+        v4 = Video.objects.create(name='def', notes='example', url='https://www.youtube.com/watch?v=101')
+
+        expected_video_order = [v2, v4, v3, v1]
+        response = self.client.get(reverse('video_list'))
+        videos_in_template = list(response.context['videos'])
+        self.assertEqual(expected_video_order, videos_in_template)
+
+
+    # No video message 
+
+    def test_no_video_message(self):
+        response = self.client.get(reverse('video_list'))
+        videos_in_template = response.context['videos']
+        self.assertContains(response, 'No videos')
+        self.assertEquals(0, len(videos_in_template))
+
+
+    # 1 video vs 4 videos message
+
+    def test_video_number_message_single_video(self):
+        v1 = Video.objects.create(name='XYZ', notes='example', url='https://www.youtube.com/watch?v=123')
+        response = self.client.get(reverse('video_list'))
+        self.assertContains(response, '1 video')
+        self.assertNotContains(response, '1 videos')   # check this, because '1 videos' contains '1 video'
+
+
+    def test_video_number_message_multiple_videos(self):
+        v1 = Video.objects.create(name='XYZ', notes='example', url='https://www.youtube.com/watch?v=123')
+        v2 = Video.objects.create(name='ABC', notes='example', url='https://www.youtube.com/watch?v=456')
+        v3 = Video.objects.create(name='uvw', notes='example', url='https://www.youtube.com/watch?v=789')
+        v4 = Video.objects.create(name='def', notes='example', url='https://www.youtube.com/watch?v=101')
+
+        response = self.client.get(reverse('video_list'))
+        self.assertContains(response, '4 videos')
+
+
+    # search only shows matching videos, partial case-insensitive matches
+
+    def test_video_search_matches(self):
+        v1 = Video.objects.create(name='ABC', notes='example', url='https://www.youtube.com/watch?v=456')
+        v2 = Video.objects.create(name='nope', notes='example', url='https://www.youtube.com/watch?v=789')
+        v3 = Video.objects.create(name='abc', notes='example', url='https://www.youtube.com/watch?v=123')
+        v4 = Video.objects.create(name='hello aBc!!!', notes='example', url='https://www.youtube.com/watch?v=101')
+        
+        expected_video_order = [v1, v3, v4]
+        response = self.client.get(reverse('video_list') + '?search_term=abc')
+        videos_in_template = list(response.context['videos'])
+        self.assertEqual(expected_video_order, videos_in_template)
+
+
+    def test_video_search_no_matches(self):
+        v1 = Video.objects.create(name='ABC', notes='example', url='https://www.youtube.com/watch?v=456')
+        v2 = Video.objects.create(name='nope', notes='example', url='https://www.youtube.com/watch?v=789')
+        v3 = Video.objects.create(name='abc', notes='example', url='https://www.youtube.com/watch?v=123')
+        v4 = Video.objects.create(name='hello aBc!!!', notes='example', url='https://www.youtube.com/watch?v=101')
+        
+        expected_video_order = []  # empty list 
+        response = self.client.get(reverse('video_list') + '?search_term=kittens')
+        videos_in_template = list(response.context['videos'])
+        self.assertEqual(expected_video_order, videos_in_template)
+        self.assertContains(response, 'No videos')
+
+
+class TestVideoModel(TestCase):
+
+    def test_create_id(self):
+        video = Video.objects.create(name='example', url='https://www.youtube.com/watch?v=IODxDxX7oi4')
+        self.assertEqual('IODxDxX7oi4', video.video_id)
+
+
+    def test_create_id_valid_url_with_time_parameter(self):
+        # a video that is playing and paused may have a timestamp in the query
+        video = Video.objects.create(name='example', url='https://www.youtube.com/watch?v=IODxDxX7oi4&ts=14')
+        self.assertEqual('IODxDxX7oi4', video.video_id)
+
+
+    def test_create_video_notes_optional(self):
+        v1 = Video.objects.create(name='example', url='https://www.youtube.com/watch?v=67890')
+        v2 = Video.objects.create(name='different example', notes='example', url='https://www.youtube.com/watch?v=12345')
+        expected_videos = [v1, v2]
+        database_videos = Video.objects.all()
+        self.assertCountEqual(expected_videos, database_videos)  # check contents of two lists/iterables but order doesn't matter.
